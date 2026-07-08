@@ -28,7 +28,7 @@ flowchart TD
     end
 
     subgraph "Stage 2: Context & Grounding"
-        D[("🌐 Repo Grounding (RAG)<br/>(Language & Extension Metadata)")]
+        D[("🌐 Dynamic Repo Grounding<br/>(Language & Extension Metadata)")]
     end
 
     subgraph "Stage 3: LLM Judge & Validation"
@@ -59,7 +59,7 @@ flowchart TD
 1. **GitHub API (The Hunt):** Fetches the latest open issues across 60+ top repositories (React, PyTorch, Kubernetes, etc.).
 2. **Hybrid Pre-Filter:** An ultra-strict rule engine that immediately drops noisy issues (RFCs, Roadmaps, all-caps rants, questions, and titles ≤ 3 words).
 3. **DeBERTa v3 Brain:** A zero-shot Transformer model evaluates the semantic difficulty of the issue, filtering out advanced/complex tickets.
-4. **Repo Grounding (RAG):** Dynamically fetches repository metadata (language, topics, top directories) to forcefully constrain the LLM (e.g., banning `.ts` suggestions in a Python codebase).
+4. **Dynamic Repo Grounding:** Dynamically fetches repository metadata (language, topics, top directories) to forcefully constrain the LLM (e.g., banning `.ts` suggestions in a Python codebase).
 5. **Llama 3 Agent (The Judge):** Evaluates the issue against strict heuristic prompts that explicitly ban "Template Collapse" verbs like *add a null check* or *insert a case branch*. If context is missing, it yields `INSUFFICIENT_CONTEXT`.
 6. **Post-Validator & Quality Scorer:** Uses strict heuristic checks to catch file extension hallucinations and generic boilerplate. 
    - *Self-Correction (Max 2 Retries):* If an output fails validation, the pipeline automatically feeds the exact failure reason back into Llama 3 for a targeted regeneration.

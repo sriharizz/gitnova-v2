@@ -66,6 +66,7 @@ def get_repo_context(repo_name: str) -> dict:
         "topics": [],
         "top_dirs": [],
         "grounding_block": "",
+        "default_branch": "main",
     }
     
     try:
@@ -79,6 +80,7 @@ def get_repo_context(repo_name: str) -> dict:
             context["description"] = data.get("description") or ""
             context["topics"] = data.get("topics") or []
             context["valid_extensions"] = LANGUAGE_EXTENSIONS.get(lang.lower(), [])
+            context["default_branch"] = data.get("default_branch") or "main"
         
         # Fetch top-level directory listing
         tree_resp = requests.get(

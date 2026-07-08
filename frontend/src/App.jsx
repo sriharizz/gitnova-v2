@@ -368,11 +368,10 @@ const RecommendationsPage = ({
                 <button
                   key={level}
                   onClick={() => { setDifficultyFilter(level); setVisibleCount(9); }}
-                  className={`px-5 py-2 rounded-full text-xs font-bold font-mono transition-all shrink-0 border ${
-                    isActive
+                  className={`px-5 py-2 rounded-full text-xs font-bold font-mono transition-all shrink-0 border ${isActive
                       ? activeColor
                       : 'bg-[#1e293b] text-slate-400 border-slate-700 shadow-sm hover:border-slate-500 hover:bg-slate-800 hover:text-slate-200'
-                  }`}
+                    }`}
                 >
                   {level === 'All' ? 'ALL LEVELS' : level === 'Novice' ? 'EASY (NOVICE)' : level === 'Apprentice' ? 'MEDIUM (APPRENTICE)' : 'HARD (CONTRIBUTOR)'}
                 </button>

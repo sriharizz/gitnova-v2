@@ -1,7 +1,9 @@
 groq
 supabase
 python-dotenv
-transformers
+transformers<5.0.0
 torch
 requests
 pandas
+sentence-transformers
+openai

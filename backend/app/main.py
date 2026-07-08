@@ -12,6 +12,9 @@ from app.pipeline.pre_filter import pre_filter_issue
 from app.pipeline.repo_grounding import get_repo_context, clear_cache
 from app.pipeline.post_validator import validate_llama_output
 from app.pipeline.quality_scorer import compute_quality_score
+from app.pipeline.code_indexer import ensure_repo_indexed
+from app.pipeline.code_retriever import retrieve_code_for_issue
+from app.pipeline.github_client import GitHubClient
 
 load_dotenv()
 
@@ -74,26 +77,28 @@ supabase = create_client(supabase_url, supabase_key)
 class PipelineStats:
     """Track statistics across the entire pipeline run."""
     def __init__(self):
-        self.fetched = 0
-        self.pre_filtered = 0
-        self.deberta_passed = 0
-        self.judged = 0
-        self.validated = 0
-        self.retried = 0
-        self.retry_saved = 0
-        self.published = 0
-        self.rejected = 0
-        self.quality_high = 0
-        self.quality_medium = 0
-        self.quality_low = 0
+        self.fetched: int = 0
+        self.pre_filtered: int = 0
+        self.skipped_unchanged: int = 0  # Issues already in DB with no changes — skipped before LLM+RAG
+        self.deberta_passed: int = 0
+        self.judged: int = 0
+        self.validated: int = 0
+        self.retried: int = 0
+        self.retry_saved: int = 0
+        self.published: int = 0
+        self.rejected: int = 0
+        self.quality_high: int = 0
+        self.quality_medium: int = 0
+        self.quality_low: int = 0
     
     def print_summary(self):
         print("\n" + "=" * 60)
         print("📊 PIPELINE SUMMARY")
         print("=" * 60)
-        print(f"   📥 Fetched:           {self.fetched}")
-        print(f"   🚫 Pre-filtered out:  {self.pre_filtered}")
-        print(f"   🧠 DeBERTa passed:    {self.deberta_passed}")
+        print(f"   📥 Fetched:              {self.fetched}")
+        print(f"   ⏭️  Skipped (unchanged):  {self.skipped_unchanged}")
+        print(f"   🚫 Pre-filtered out:     {self.pre_filtered}")
+        print(f"   🧠 DeBERTa passed:       {self.deberta_passed}")
         print(f"   ⚡ Judged by LLM:     {self.judged}")
         print(f"   ✅ Validated:          {self.validated}")
         print(f"   🔄 Retried:           {self.retried} (saved {self.retry_saved})")
@@ -135,9 +140,12 @@ def clean_closed_issues():
                 r = requests.get(api_url, headers=headers, timeout=5)
                 if r.status_code == 200:
                     gh_data = r.json()
-                    if gh_data.get('state') == 'closed':
+                    is_closed = gh_data.get('state') == 'closed'
+                    has_assignee = bool(gh_data.get('assignee') or gh_data.get('assignees'))
+                    if is_closed or has_assignee:
                         supabase.table("issues").delete().eq("id", issue['id']).execute()
-                        print(f"   🗑️ Removed closed issue: {issue['repo_name']} #{issue['id']}")
+                        reason = "closed" if is_closed else "assigned"
+                        print(f"   🗑️ Removed {reason} issue: {issue['repo_name']} #{issue['id']}")
                         closed_count += 1
             except Exception:
                 continue
@@ -157,7 +165,26 @@ def run_pipeline():
     stats = PipelineStats()
     clean_closed_issues()
     clear_cache()  # Fresh repo context cache each run
-    
+
+    # ═══════════════════════════════════════════
+    # STARTUP: Load all existing issue IDs + timestamps from DB (one query)
+    # Purpose: lets us skip issues that are already stored AND unchanged,
+    # before running any expensive DeBERTa / RAG / LLM steps.
+    # Maps: github_issue_id (int) -> github_issue_updated_at (str)
+    # ═══════════════════════════════════════════
+    existing_issues: dict = {}
+    try:
+        existing_resp = supabase.table("issues") \
+            .select("id, github_issue_updated_at") \
+            .execute()
+        existing_issues = {
+            row["id"]: row.get("github_issue_updated_at", "")
+            for row in (existing_resp.data or [])
+        }
+        print(f"📋 Loaded {len(existing_issues)} existing issue IDs from DB for dedup skip.")
+    except Exception as e:
+        print(f"⚠️ Could not load existing issues from DB (will reprocess all): {e}")
+
     for category, repos in INTERESTS.items():
         print(f"\n🌍 CATEGORY: {category}")
         candidates = []
@@ -191,7 +218,19 @@ def run_pipeline():
                 for issue in issues:
                     if 'pull_request' in issue: continue
                     stats.fetched += 1
-                    
+
+                    # ═══════════════════════════════════════════
+                    # STAGE 0: SKIP UNCHANGED (Task 2 — Gap 1 fix)
+                    # ═══════════════════════════════════════════
+                    # If the issue is already in the DB AND its updated_at timestamp
+                    # hasn't changed since we last stored it → nothing new to process.
+                    # Skip BEFORE DeBERTa, RAG, and LLM to save the entire compute budget.
+                    issue_id = issue.get('id')
+                    issue_updated_at = issue.get('updated_at', '')
+                    if issue_id in existing_issues and existing_issues[issue_id] == issue_updated_at:
+                        stats.skipped_unchanged += 1
+                        continue
+
                     # ═══════════════════════════════════════════
                     # STAGE 1: PRE-FILTER (NEW)
                     # ═══════════════════════════════════════════
@@ -234,33 +273,66 @@ def run_pipeline():
         print(f"   💎 Sending {len(top_picks)} Best Candidates to The Judge...")
 
         # ═══════════════════════════════════════════
-        # STAGE 3: REPO GROUNDING (NEW)
+        # STAGE 3: REPO GROUNDING & RAG INDEXING
         # ═══════════════════════════════════════════
-        # Pre-fetch repo contexts (cached, so each repo fetched only once)
+        # Pre-fetch repo contexts and index repository code (RAG)
         repo_contexts = {}
+        repo_commits = {}
+        gh_client = GitHubClient(supabase_client=supabase)
+        
         for item in top_picks:
-            if item['repo'] not in repo_contexts:
-                repo_contexts[item['repo']] = get_repo_context(item['repo'])
-                lang = repo_contexts[item['repo']].get('language', '?')
-                print(f"   🌐 Grounded {item['repo']}: {lang}")
+            r_name = item['repo']
+            if r_name not in repo_contexts:
+                # 1. Fetch repo metadata context
+                repo_contexts[r_name] = get_repo_context(r_name)
+                lang = repo_contexts[r_name].get('language', '?')
+                print(f"   🌐 Grounded {r_name}: {lang}")
+                
+                # 2. Collect top-picks issues for this specific repo to guide indexing (Boosts B & C)
+                repo_issues = [x['data'] for x in top_picks if x['repo'] == r_name]
+                
+                # 3. Trigger index update
+                try:
+                    active_sha = ensure_repo_indexed(supabase, gh_client, r_name, repo_contexts[r_name], repo_issues)
+                    repo_commits[r_name] = active_sha
+                except Exception as index_err:
+                    print(f"   ⚠️ RAG Indexing error for {r_name}: {index_err}")
+                    repo_commits[r_name] = ""
 
         # ═══════════════════════════════════════════
-        # STAGE 4+5+6: JUDGE → VALIDATE → SCORE
+        # STAGE 4+5+6: JUDGE → RAG RETRIEVAL → VALIDATE → SCORE
         # ═══════════════════════════════════════════
         for item in top_picks:
             issue = item['data']
             safe_body = issue.get('body') or ""
             repo_ctx = repo_contexts.get(item['repo'], {})
+            commit_sha = repo_commits.get(item['repo'], "")
             
             stats.judged += 1
             
+            # --- STAGE 3.5: RAG Retrieve Code Evidence ---
+            retrieved_code = ""
+            retrieved_chunk_ids = []
+            retrieval_method = "NONE"
+            
+            if commit_sha:
+                try:
+                    retrieved_code, retrieved_chunk_ids = retrieve_code_for_issue(
+                        supabase, item['repo'], commit_sha, issue['title'], safe_body
+                    )
+                    if retrieved_chunk_ids:
+                        retrieval_method = "RRF"
+                except Exception as retrieve_err:
+                    print(f"      ⚠️ RAG retrieval failed: {retrieve_err}")
+            
             # --- STAGE 4: LLM Tactical Plan ---
-            ai_response = evaluate_and_enrich(
+            ai_response, provider_name, model_name = evaluate_and_enrich(
                 issue['title'], 
                 safe_body, 
                 item['repo'], 
                 item['analysis']['difficulty'],
-                repo_ctx
+                repo_ctx,
+                retrieved_code=retrieved_code
             )
             
             if not ai_response:
@@ -286,9 +358,10 @@ def run_pipeline():
                     stats.retried += 1
                     print(f"      🔄 Retrying {retries}/{MAX_RETRIES} (failures: {', '.join(failures[:2])})")
                     
-                    ai_response_retry = evaluate_and_enrich(
+                    ai_response_retry, retry_provider, retry_model = evaluate_and_enrich(
                         issue['title'], safe_body, item['repo'],
                         item['analysis']['difficulty'], repo_ctx,
+                        retrieved_code=retrieved_code,
                         retry_feedback=failures
                     )
                     
@@ -304,6 +377,8 @@ def run_pipeline():
                                 hint_text = hint_retry
                                 valid = True
                                 stats.retry_saved += 1
+                                provider_name = retry_provider
+                                model_name = retry_model
                                 print(f"      ✅ Retry {retries} succeeded!")
                                 break
                             else:
@@ -342,7 +417,19 @@ def run_pipeline():
                     "category": category,
                     "url": issue['html_url'],
                     "status": "PUBLISHED",
-                    "created_at": issue['created_at']
+                    "created_at": issue['created_at'],
+                    
+                    # RAG Metadata Columns:
+                    "github_issue_number": issue.get('number'),
+                    "github_issue_updated_at": issue.get('updated_at'),
+                    "repo_commit_sha": commit_sha,
+                    "retrieved_chunk_ids": retrieved_chunk_ids,
+                    "retrieval_method": retrieval_method,
+                    "model_provider": provider_name,
+                    "model_name": model_name,
+                    "prompt_version": "v3-grounded",
+                    "quality_score": quality.get('overall', 0.0),
+                    "quality_grade": quality.get('grade', 'Low')
                 }
                 
                 if DRY_RUN:

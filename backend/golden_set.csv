@@ -1,0 +1,23 @@
+issue_id,issue_title,repo,ground_truth_files
+4664526040,0.137.0: `APIRoute.tags` invisible to type checkers in generate_unique_id_function (regression from #15745),fastapi/fastapi,fastapi/routing.py
+4663980467,0.137.0: empty-path route nested under prefix-less outer include raises 'Prefix and path cannot be both empty',fastapi/fastapi,fastapi/routing.py
+4709736799,Bug: `fetchPriority` is not available in `ReactDOM.preloadModule()`,facebook/react,"packages/react-dom/src/shared/ReactDOMFloat.js,packages/react-dom/src/shared/ReactDOMTypes.js"
+4539768508,Bug: Fizz image preload headers drop referrerPolicy for rendered <img>,facebook/react,packages/react-dom-bindings/src/server/ReactFizzConfigDOM.js
+4100677214,Bug: react-hooks/set-state-in-effect fails to flag violation if prop has a `NewExpression` default value,facebook/react,compiler/packages/babel-plugin-react-compiler/src/HIR/BuildHIR.ts
+4017954987,[DevTools Bug]: confused on prerender pages and resulting in high-cpu usage loop,facebook/react,"packages/react-devtools-extensions/src/background/index.js,packages/react-devtools-extensions/src/main/index.js"
+4000550727,[DevTools Bug] Cannot read properties of null (reading 'ownerDocument'),facebook/react,"packages/react-devtools-shared/src/devtools/ContextMenu/ContextMenu.js,packages/react-devtools-shared/src/devtools/ContextMenu/ContextMenuContainer.js"
+3998083815,Bug: React does not recognize the `maskType` prop on a DOM element.,facebook/react,"packages/react-dom-bindings/src/shared/getAttributeAlias.js,packages/react-dom-bindings/src/shared/possibleStandardNames.js"
+3866039081,ReactPerformanceTrackProperties/addValueToProperties fails to handle cursors (fn + proxy),facebook/react,packages/shared/ReactPerformanceTrackProperties.js
+3736261831,Bug: `react-hooks/set-state-in-effect` doesn't work in `React.useState` and `React.useEffect`,facebook/react,compiler/packages/babel-plugin-react-compiler/src/Validation/ValidateNoSetStateInEffects.ts
+3733426626,Improve cyclic thenable detection in ReactFlightReplyServer,facebook/react,packages/react-server/src/ReactFlightReplyServer.js
+3733390400,Improve cyclic thenable detection in ReactFlightReplyServer,facebook/react,packages/react-server/src/ReactFlightReplyServer.js
+3712764350,Bug: Server Components error when directly rendering a Context,facebook/react,"packages/react-reconciler/src/ReactFiberBeginWork.js,packages/react-server/src/ReactFlightServerTemporaryReferences.js"
+3710652146,Bug: ViewTransition with enter/exit hard-crashes iOS Safari,facebook/react,packages/react-dom-bindings/src/client/ReactFiberConfigDOM.js
+3675378444,"[DevTools Bug]: Internal state change in cousin component causing a ""re-render"" in another cousin component wrapped inside parent divs.",facebook/react,packages/react-devtools-shared/src/backend/fiber/renderer.js
+3720193758,"Discriminated Unions Break When Wrapped in Annotated[Union, Body(...)] in FastAPI 0.124.1+",fastapi/fastapi,fastapi/_compat/v2.py
+3714874558,"In FastAPI 0.123.7, annotations from code imported in `if TYPE_CHECKING` could break",fastapi/fastapi,fastapi/dependencies/utils.py
+3714411600,"Since FastAPI 0.119.0, using `arbitrary_types_allowed=True` with custom types that define their serialization and JSON Schema breaks when generating OpenAPI",fastapi/fastapi,fastapi/_compat/v2.py
+3694454256,"OAuth2 security schemes duplicated in OpenAPI, with and without scopes, when used at the router level",fastapi/fastapi,fastapi/openapi/utils.py
+3575995490,🐛 0.120.3 breaks `SecurityBase` based dependencies in OpenAPI,fastapi/fastapi,fastapi/dependencies/utils.py
+3565751506,Component name regression in OpenAPI spec for v0.119.0,fastapi/fastapi,fastapi/_compat/v2.py
+2942725856,Multiple regressions in the handling of forms & form validation,fastapi/fastapi,fastapi/dependencies/utils.py
