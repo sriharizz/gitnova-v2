@@ -2,8 +2,8 @@ name: GitNova Daily Pipeline
 
 on:
   schedule:
-    # Run daily at 06:00 AM UTC (11:30 AM IST)
-    - cron: '0 6 * * *'
+    # Run twice daily — 6AM and 6PM UTC (11:30AM and 11:30PM IST)
+    - cron: '0 6,18 * * *'
   workflow_dispatch:
     # Allows manual triggers from the GitHub UI for demos
 
