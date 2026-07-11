@@ -12,9 +12,9 @@ from app.pipeline.pre_filter import pre_filter_issue
 from app.pipeline.repo_grounding import get_repo_context, clear_cache
 from app.pipeline.post_validator import validate_llama_output
 from app.pipeline.quality_scorer import compute_quality_score
-from app.pipeline.code_indexer import ensure_repo_indexed
+# code_indexer is NOT imported here — indexing runs separately via scripts/reindex_repos.py
 from app.pipeline.code_retriever import retrieve_code_for_issue
-from app.pipeline.github_client import GitHubClient
+# GitHubClient is NOT imported here — only needed during indexing
 
 load_dotenv()
 
@@ -273,31 +273,42 @@ def run_pipeline():
         print(f"   💎 Sending {len(top_picks)} Best Candidates to The Judge...")
 
         # ═══════════════════════════════════════════
-        # STAGE 3: REPO GROUNDING & RAG INDEXING
+        # STAGE 3: REPO GROUNDING & RAG LOOKUP
         # ═══════════════════════════════════════════
-        # Pre-fetch repo contexts and index repository code (RAG)
+        # Pre-fetch repo contexts and look up existing RAG snapshots.
+        # NOTE: Indexing is NOT done here. It runs separately via
+        #       scripts/reindex_repos.py (locally or as a one-time Action).
+        #       The daily pipeline only READS whatever is already indexed.
         repo_contexts = {}
         repo_commits = {}
-        gh_client = GitHubClient(supabase_client=supabase)
         
         for item in top_picks:
             r_name = item['repo']
             if r_name not in repo_contexts:
-                # 1. Fetch repo metadata context
+                # 1. Fetch repo metadata context (lightweight — cached in-memory)
                 repo_contexts[r_name] = get_repo_context(r_name)
                 lang = repo_contexts[r_name].get('language', '?')
                 print(f"   🌐 Grounded {r_name}: {lang}")
                 
-                # 2. Collect top-picks issues for this specific repo to guide indexing (Boosts B & C)
-                repo_issues = [x['data'] for x in top_picks if x['repo'] == r_name]
-                
-                # 3. Trigger index update
+                # 2. Look up the ACTIVE snapshot SHA from Supabase (single DB query, no GitHub API)
                 try:
-                    active_sha = ensure_repo_indexed(supabase, gh_client, r_name, repo_contexts[r_name], repo_issues)
-                    repo_commits[r_name] = active_sha
-                except Exception as index_err:
-                    print(f"   ⚠️ RAG Indexing error for {r_name}: {index_err}")
+                    snap_resp = supabase.table("repository_snapshots") \
+                        .select("commit_sha") \
+                        .eq("repo_name", r_name) \
+                        .eq("status", "ACTIVE") \
+                        .limit(1) \
+                        .execute()
+                    
+                    if snap_resp.data:
+                        repo_commits[r_name] = snap_resp.data[0]["commit_sha"]
+                        print(f"   ✅ RAG ready for {r_name} at commit {repo_commits[r_name][:7]}")
+                    else:
+                        repo_commits[r_name] = ""
+                        print(f"   ⚠️ No RAG index for {r_name} — LLM will run without code context")
+                except Exception as snap_err:
+                    print(f"   ⚠️ RAG lookup error for {r_name}: {snap_err}")
                     repo_commits[r_name] = ""
+
 
         # ═══════════════════════════════════════════
         # STAGE 4+5+6: JUDGE → RAG RETRIEVAL → VALIDATE → SCORE
