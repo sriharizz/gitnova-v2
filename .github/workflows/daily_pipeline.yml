@@ -11,7 +11,7 @@ jobs:
   run-pipeline:
     name: Run GitNova Issue Processing Engine
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 180
 
     steps:
       - name: Checkout Repository
