@@ -22,14 +22,15 @@ load_dotenv()
 groq_key = os.getenv("GROQ_API_KEY")
 if not groq_key:
     raise ValueError("❌ CRITICAL: GROQ_API_KEY is missing from .env")
-groq = Groq(api_key=groq_key)
+groq = Groq(api_key=groq_key, max_retries=1)
 
 nvidia_key = os.getenv("NVIDIA_API_KEY")
 nvidia_client = None
 if nvidia_key:
     nvidia_client = OpenAI(
         base_url="https://integrate.api.nvidia.com/v1",
-        api_key=nvidia_key
+        api_key=nvidia_key,
+        max_retries=1
     )
 else:
     print("⚠️ WARNING: NVIDIA_API_KEY is missing. NVIDIA NIM will be skipped.")
@@ -154,7 +155,7 @@ def evaluate_and_enrich(issue_title: str, issue_body: str, repo: str,
     print(f"      ⚡ The Judge is reviewing ({repo})...")
     
     # 🛑 SAFE MODE: RATE LIMIT PROTECTION
-    time.sleep(7)
+    time.sleep(2)
 
     # Establish priority list: try in order, skip if client unavailable.
     # Gemma 4 is primary temporarily since Llama 3.3 is currently down/timing out on NVIDIA NIM.

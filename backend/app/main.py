@@ -61,7 +61,7 @@ DRY_RUN = False              # Set True to test without DB writes
 FETCH_PER_REPO = 15          # GitHub fetching depth (15 = freshest issues, completes in <2h)
 LOCAL_MIN_CONFIDENCE = 0.30  # DeBERTa Pass/Fail Threshold
 CLOUD_SELECTION_LIMIT = 10   # Max issues to send to LLM per category
-MAX_RETRIES = 2              # Post-validation retry attempts
+MAX_RETRIES = 1              # Post-validation retry attempts
 
 # Init Supabase
 supabase_url = os.getenv("SUPABASE_URL")
