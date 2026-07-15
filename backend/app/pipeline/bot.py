@@ -166,8 +166,8 @@ def evaluate_and_enrich(issue_title: str, issue_body: str, repo: str,
         models.append({"provider": "nvidia", "name": "meta/llama-3.3-70b-instruct", "client": nvidia_client})
 
     models.extend([
-        {"provider": "groq", "name": "llama-3.3-70b-versatile", "client": groq},
-        {"provider": "groq", "name": "llama-3.1-8b-instant",    "client": groq}
+        {"provider": "groq", "name": "qwen/qwen3.6-27b",                       "client": groq},
+        {"provider": "groq", "name": "meta/llama-4-scout-17b-16e-instruct",     "client": groq}
     ])
     
     if not issue_body:
