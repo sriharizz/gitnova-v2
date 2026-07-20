@@ -2,45 +2,14 @@
 import re
 import os
 import time
-import requests
 from typing import List, Dict, Any, Optional
 
-# ── Jina Embeddings API (mirrors code_indexer.py) ────────────────────────────────────
-# The retriever must embed query text using the SAME model as the indexer.
-# If they differ, the vectors exist in different spaces and cosine similarity
-# returns garbage results. Using the Jina API ensures both always match.
-JINA_API_URL = "https://api.jina.ai/v1/embeddings"
-JINA_MODEL   = "jina-embeddings-v2-base-code"
+# ── Local Embeddings (sentence-transformers) ─────────────────────────────────
+# Uses the same model as the indexer (jinaai/jina-embeddings-v2-base-code)
+# but runs locally instead of calling the Jina API. Zero cost, same vectors.
+from app.pipeline.embedder import embed_query as _embed_query
+# ─────────────────────────────────────────────────────────────────────────────
 
-
-def _embed_query(text: str) -> List[float]:
-    """
-    Embeds a single query string (issue title + body) via the Jina API.
-    Returns a 768-dimensional float vector for vector similarity search.
-    """
-    api_key = os.getenv("JINA_API_KEY")
-    if not api_key:
-        raise RuntimeError("JINA_API_KEY missing from .env — cannot embed query.")
-
-    headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
-    payload = {"model": JINA_MODEL, "input": [text]}
-
-    for attempt in range(1, 4):
-        try:
-            resp = requests.post(JINA_API_URL, headers=headers, json=payload, timeout=30)
-            if resp.status_code == 200:
-                return resp.json()["data"][0]["embedding"]
-            elif resp.status_code == 429:
-                time.sleep(2 ** attempt)
-            else:
-                raise RuntimeError(f"Jina API error {resp.status_code}: {resp.text[:200]}")
-        except requests.exceptions.RequestException as e:
-            if attempt == 3:
-                raise RuntimeError(f"Jina API unreachable: {e}")
-            time.sleep(2 ** attempt)
-
-    raise RuntimeError("Jina API failed after 3 retries.")
-# ────────────────────────────────────────────────────────────────────────────
 
 
 def rrf_score(ranks: List[int], k: int = 60) -> float:

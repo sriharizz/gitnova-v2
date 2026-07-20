@@ -15,57 +15,12 @@ MAX_INDEX_FILES: int = 50
 # ──────────────────────────────────────────────────────────────────────────────
 
 
-# ── Jina Embeddings API ───────────────────────────────────────────────────────
-# We call Jina's cloud API instead of running the model locally on CPU.
-# Why: local CPU inference takes 8-10 hours for 65 repos.
-#      Jina API (same model) takes ~15-20 minutes — 50x faster.
-# Free tier: 10 million tokens — enough for full initial index + ~10 months.
-JINA_API_URL = "https://api.jina.ai/v1/embeddings"
-JINA_MODEL   = "jina-embeddings-v2-base-code"
-
-
-def _embed_via_api(texts: List[str]) -> List[List[float]]:
-    """
-    Sends a batch of texts to the Jina Embeddings API and returns their vectors.
-
-    Each text becomes a 768-dimensional float vector — the same format as the
-    local model produced, so all existing Supabase vector search RPCs still work.
-
-    Retries up to 3 times on transient errors (rate limits, network blips).
-    """
-    api_key = os.getenv("JINA_API_KEY")
-    if not api_key:
-        raise RuntimeError("JINA_API_KEY missing from .env — cannot embed chunks.")
-
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json",
-    }
-    payload = {
-        "model": JINA_MODEL,
-        "input": texts,
-    }
-
-    for attempt in range(1, 4):  # 3 attempts
-        try:
-            resp = requests.post(JINA_API_URL, headers=headers, json=payload, timeout=60)
-            if resp.status_code == 200:
-                data = resp.json()["data"]
-                # API returns embeddings in the same order as input texts
-                return [item["embedding"] for item in data]
-            elif resp.status_code == 429:  # Rate limit
-                wait = 2 ** attempt  # 2s, 4s, 8s
-                print(f"   ⚠️ Jina API rate limit hit. Waiting {wait}s... (attempt {attempt}/3)")
-                time.sleep(wait)
-            else:
-                raise RuntimeError(f"Jina API error {resp.status_code}: {resp.text[:200]}")
-        except requests.exceptions.RequestException as e:
-            if attempt == 3:
-                raise RuntimeError(f"Jina API unreachable after 3 attempts: {e}")
-            time.sleep(2 ** attempt)
-
-    raise RuntimeError("Jina API failed after 3 retries.")
+# ── Local Embeddings (sentence-transformers) ─────────────────────────────────
+# Uses jinaai/jina-embeddings-v2-base-code locally via sentence-transformers.
+# Replaces Jina API calls — same model, same 768-dim vectors, zero API cost.
+from app.pipeline.embedder import embed_batch as _embed_via_api
 # ──────────────────────────────────────────────────────────────────────────────
+
 
 
 
